@@ -1,118 +1,225 @@
 from snowflake.snowpark.context import get_active_session
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
-MODEL = "llama3.1-70b"
-MODEL_OPTIONS = ["llama3.1-70b", "mistral-large2", "claude-3-5-sonnet"]
+st.set_page_config(page_title="Audience Insights", layout="wide")
 
-st.set_page_config(page_title="Talk to your data", layout="wide")
-st.title("Talk to your data")
+st.markdown("""
+<style>
+.kpi-card {
+    background: linear-gradient(135deg, #0a1628 0%, #0d2137 100%);
+    border: 1px solid #29b5e8;
+    border-radius: 14px;
+    padding: 28px 16px;
+    text-align: center;
+}
+.kpi-value {
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: #29b5e8;
+    margin: 0;
+    line-height: 1;
+}
+.kpi-label {
+    font-size: 0.72rem;
+    color: #7a9bb5;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+BLUE       = "#29b5e8"
+DARK_BLUE  = "#11567f"
+COLORS     = px.colors.qualitative.Bold
+TMPL       = "plotly_dark"
 
 session = get_active_session()
 
-# Konfiguracja: baza, schemat, model
-col_db, col_schema, col_model = st.columns([2, 2, 3])
-with col_db:
-    database = st.text_input("Database", value="DEMO")
-with col_schema:
-    schema_name = st.text_input("Schema", value="PUBLIC")
-with col_model:
-    model = st.selectbox("Model LLM", MODEL_OPTIONS, index=MODEL_OPTIONS.index(MODEL))
 
-st.divider()
-
-
-@st.cache_data(show_spinner="Fetching database schema...")
-def get_schema_context(db: str, sch: str) -> str:
-    rows = session.sql(
-        f"""
-        SELECT table_name, column_name, data_type
-        FROM {db}.INFORMATION_SCHEMA.COLUMNS
-        WHERE table_schema = UPPER('{sch}')
-        ORDER BY table_name, ordinal_position
-        """
-    ).collect()
-    tables: dict = {}
-    for row in rows:
-        tbl = row["TABLE_NAME"]
-        if tbl not in tables:
-            tables[tbl] = []
-        tables[tbl].append(f"{row['COLUMN_NAME']} {row['DATA_TYPE']}")
-    return "\n".join(f"{t}({', '.join(cols)})" for t, cols in tables.items())
+@st.cache_data(ttl=30, show_spinner="Loading responses...")
+def load_data() -> pd.DataFrame:
+    return session.sql("""
+        SELECT role, experience_years, fav_cloud, fav_language,
+               coffees_per_day, uses_ai_daily, submitted_at
+        FROM DEMO.PUBLIC.AUDIENCE_SURVEY
+        ORDER BY submitted_at
+    """).to_pandas()
 
 
-schema_context = get_schema_context(database, schema_name)
+# Header
+col_h, col_btn = st.columns([5, 1])
+with col_h:
+    st.title("Audience Insights")
+with col_btn:
+    st.write("")
+    st.write("")
+    if st.button("Refresh", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
-if not schema_context:
-    st.warning("No tables found in the given schema. Check the Database and Schema values.")
+df = load_data()
+
+if df.empty:
+    st.info("No responses yet. Share the QR code!")
     st.stop()
 
-with st.expander("Schema passed to the model"):
-    st.code(schema_context)
+# KPIs
+n        = len(df)
+ai_pct   = round(df["USES_AI_DAILY"].mean() * 100)
+avg_exp  = round(df["EXPERIENCE_YEARS"].mean(), 1)
+avg_cof  = round(df["COFFEES_PER_DAY"].mean(), 1)
+top_lang = df["FAV_LANGUAGE"].value_counts().idxmax()
 
-question = st.text_area(
-    "Question in natural language",
-    placeholder="e.g. How many people prefer Python?",
-    height=80,
-)
+kpis = [
+    (n,              "Responses"),
+    (f"{avg_exp} yrs", "Avg Experience"),
+    (f"{ai_pct}%",    "Use AI Daily"),
+    (f"{avg_cof}",    "Avg Coffees / Day"),
+]
+for col, (val, label) in zip(st.columns(4), kpis):
+    with col:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <p class="kpi-value">{val}</p>
+            <p class="kpi-label">{label}</p>
+        </div>""", unsafe_allow_html=True)
 
+st.write("")
 
-def extract_sql(text: str) -> str:
-    text = text.strip()
-    if "```sql" in text:
-        text = text.split("```sql")[1].split("```")[0]
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0]
-    return text.strip().rstrip(";").strip()
+# Tabs
+tab1, tab2, tab3 = st.tabs(["Who's in the room?", "Habits & Trends", "Raw data"])
 
+# ---- TAB 1 ----------------------------------------------------------------
+with tab1:
+    c1, c2, c3 = st.columns(3)
 
-if st.button("Generate SQL", type="primary", disabled=not question.strip()):
-    prompt = (
-        "You are a Snowflake SQL expert. "
-        "Based on the provided database schema, generate a SQL query "
-        "that answers the user's question. "
-        "Return ONLY the raw SQL code with no markdown, no explanations, "
-        "and no trailing semicolon.\n\n"
-        f"Schema:\n{schema_context}\n\n"
-        f"Question: {question}\n\n"
-        "SQL:"
-    )
-    safe_prompt = prompt.replace("'", "''")
+    with c1:
+        rc = df["ROLE"].value_counts().reset_index()
+        rc.columns = ["Role", "Count"]
+        fig = px.pie(rc, values="Count", names="Role",
+                     title="Role distribution",
+                     hole=0.55, color_discrete_sequence=COLORS, template=TMPL)
+        fig.update_traces(textposition="outside", textinfo="percent+label")
+        fig.update_layout(showlegend=False, margin=dict(t=50, b=10, l=10, r=10))
+        st.plotly_chart(fig, use_container_width=True)
 
-    with st.spinner("Generating SQL with Cortex..."):
-        try:
-            result = session.sql(
-                f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{safe_prompt}')"
-            ).collect()[0][0]
-            st.session_state["generated_sql"] = extract_sql(result)
-            st.session_state["query_result"] = None
-        except Exception as exc:
-            st.error(f"Error generating SQL: {exc}")
+    with c2:
+        cloud = df["FAV_CLOUD"].value_counts().reset_index()
+        cloud.columns = ["Cloud", "Count"]
+        fig = px.bar(cloud.sort_values("Count"), x="Count", y="Cloud",
+                     orientation="h", title="Favorite cloud platform",
+                     color="Count", color_continuous_scale=[DARK_BLUE, BLUE],
+                     template=TMPL, text="Count")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(coloraxis_showscale=False,
+                          margin=dict(t=50, b=10, l=10, r=50),
+                          xaxis_title="", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
 
-if st.session_state.get("generated_sql"):
-    st.subheader("Generated SQL")
-    st.code(st.session_state["generated_sql"], language="sql")
+    with c3:
+        lang = df["FAV_LANGUAGE"].value_counts().reset_index()
+        lang.columns = ["Language", "Count"]
+        fig = px.bar(lang.sort_values("Count"), x="Count", y="Language",
+                     orientation="h", title="Favorite language",
+                     color="Count", color_continuous_scale=[DARK_BLUE, BLUE],
+                     template=TMPL, text="Count")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(coloraxis_showscale=False,
+                          margin=dict(t=50, b=10, l=10, r=50),
+                          xaxis_title="", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
 
-    if st.button("Run query"):
-        with st.spinner("Running query..."):
-            try:
-                df = session.sql(st.session_state["generated_sql"]).to_pandas()
-                st.session_state["query_result"] = df
-            except Exception as exc:
-                st.error(f"Error running query: {exc}")
-                st.session_state["query_result"] = None
+    # Timeline (meaningful only when there are multiple timestamps)
+    ts = pd.to_datetime(df["SUBMITTED_AT"])
+    if ts.nunique() > 2:
+        st.write("")
+        tl = (ts.dt.floor("min")
+                .value_counts()
+                .sort_index()
+                .cumsum()
+                .reset_index())
+        tl.columns = ["Time", "Cumulative responses"]
+        fig = px.area(tl, x="Time", y="Cumulative responses",
+                      title="Responses over time",
+                      color_discrete_sequence=[BLUE], template=TMPL)
+        fig.update_traces(fill="tozeroy", line_width=2.5)
+        fig.update_layout(margin=dict(t=50, b=10, l=10, r=10),
+                          xaxis_title="", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
 
-if st.session_state.get("query_result") is not None:
-    df: pd.DataFrame = st.session_state["query_result"]
-    st.subheader(f"Results ({len(df)} rows)")
-    st.dataframe(df, use_container_width=True)
+# ---- TAB 2 ----------------------------------------------------------------
+with tab2:
+    c1, c2 = st.columns(2)
 
-    # Auto chart for categorical + numeric columns
-    if len(df) <= 50:
-        cat_cols = [c for c in df.columns if df[c].dtype == object]
-        num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-        if cat_cols and num_cols:
-            st.bar_chart(
-                df[[cat_cols[0], num_cols[0]]].set_index(cat_cols[0]),
-                use_container_width=True,
-            )
+    with c1:
+        fig = px.histogram(df, x="EXPERIENCE_YEARS",
+                           title="Experience distribution",
+                           nbins=min(20, df["EXPERIENCE_YEARS"].nunique() + 1),
+                           color_discrete_sequence=[BLUE], template=TMPL)
+        fig.update_layout(bargap=0.08, margin=dict(t=50, b=10, l=10, r=10),
+                          xaxis_title="Years", yaxis_title="People")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with c2:
+        fig = px.box(df, x="ROLE", y="COFFEES_PER_DAY",
+                     title="Coffee / day by role",
+                     color="ROLE", color_discrete_sequence=COLORS,
+                     template=TMPL, points="all")
+        fig.update_layout(showlegend=False,
+                          margin=dict(t=50, b=10, l=10, r=10),
+                          xaxis_title="", yaxis_title="Coffees")
+        st.plotly_chart(fig, use_container_width=True)
+
+    c3, c4 = st.columns(2)
+
+    with c3:
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=ai_pct,
+            title={"text": "AI Daily Adoption", "font": {"color": "white", "size": 16}},
+            gauge={
+                "axis": {"range": [0, 100], "ticksuffix": "%", "tickcolor": "white"},
+                "bar": {"color": BLUE, "thickness": 0.28},
+                "bgcolor": "rgba(0,0,0,0)",
+                "steps": [
+                    {"range": [0, 50],  "color": "#0a1628"},
+                    {"range": [50, 100], "color": "#0d2137"},
+                ],
+                "threshold": {
+                    "line": {"color": "white", "width": 2},
+                    "thickness": 0.7,
+                    "value": 50,
+                },
+            },
+            number={"suffix": "%", "font": {"color": BLUE, "size": 52}},
+        ))
+        fig.update_layout(template=TMPL, height=320,
+                          margin=dict(t=70, b=20, l=40, r=40))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with c4:
+        avg_r = (df.groupby("ROLE")[["EXPERIENCE_YEARS", "COFFEES_PER_DAY"]]
+                   .mean().round(1).reset_index())
+        fig = px.scatter(avg_r,
+                         x="EXPERIENCE_YEARS", y="COFFEES_PER_DAY",
+                         text="ROLE",
+                         size=[40] * len(avg_r),
+                         title="Experience vs coffee (by role)",
+                         color="ROLE", color_discrete_sequence=COLORS,
+                         template=TMPL)
+        fig.update_traces(textposition="top center", marker_opacity=0.85)
+        fig.update_layout(showlegend=False,
+                          margin=dict(t=50, b=10, l=10, r=10),
+                          xaxis_title="Avg experience (yrs)",
+                          yaxis_title="Avg coffees / day")
+        st.plotly_chart(fig, use_container_width=True)
+
+# ---- TAB 3 ----------------------------------------------------------------
+with tab3:
+    st.caption(f"{n} responses - auto-refreshes every 30 seconds")
+    st.dataframe(df, use_container_width=True, hide_index=True)
