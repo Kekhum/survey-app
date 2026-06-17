@@ -11,41 +11,65 @@ st.markdown("""
     background: linear-gradient(135deg, #0a1628 0%, #0d2137 100%);
     border: 1px solid #29b5e8;
     border-radius: 14px;
-    padding: 28px 16px;
+    padding: 32px 16px;
     text-align: center;
+    height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 .kpi-value {
-    font-size: 2.6rem;
+    font-size: 2.4rem;
     font-weight: 800;
     color: #29b5e8;
     margin: 0;
     line-height: 1;
 }
 .kpi-label {
-    font-size: 0.72rem;
+    font-size: 0.70rem;
     color: #7a9bb5;
     text-transform: uppercase;
     letter-spacing: 1.8px;
     margin-top: 10px;
     margin-bottom: 0;
 }
+.section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #8aacbf;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    margin-bottom: 4px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-BLUE  = "#29b5e8"
+BLUE     = "#29b5e8"
+MID_BLUE = "#11567f"
+H        = 270   # consistent chart height
+
 session = get_active_session()
 
 
 def dark(chart: alt.Chart) -> alt.Chart:
     return (chart
-        .configure_view(fill="#0a1628", strokeWidth=0)
+        .configure_view(fill="#0d1e30", strokeWidth=0)
         .configure_axis(
             labelColor="#8aacbf", titleColor="#8aacbf",
             gridColor="#152234", domainColor="#152234",
+            labelFontSize=12,
         )
-        .configure_legend(labelColor="#8aacbf", titleColor="#8aacbf")
-        .configure_title(color="white", fontSize=14, anchor="start")
+        .configure_legend(
+            labelColor="#c0d8ea", titleColor="#8aacbf",
+            fillColor="#0d1e30", strokeColor="#1a3a5c",
+            padding=8, cornerRadius=6, labelFontSize=11,
+        )
     )
+
+
+def title(text: str) -> None:
+    st.markdown(f'<p class="section-title">{text}</p>', unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=30, show_spinner="Loading responses...")
@@ -60,7 +84,7 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-# Header
+# ---- Header ---------------------------------------------------------------
 col_h, col_btn = st.columns([5, 1])
 with col_h:
     st.title("Audience Insights")
@@ -77,7 +101,7 @@ if df.empty:
     st.info("No responses yet. Share the QR code!")
     st.stop()
 
-# KPIs
+# ---- KPI cards ------------------------------------------------------------
 n       = len(df)
 ai_pct  = round(df["USES_AI_DAILY"].mean() * 100)
 avg_exp = round(df["EXPERIENCE_YEARS"].mean(), 1)
@@ -97,84 +121,89 @@ for col, (val, label) in zip(st.columns(4), [
         </div>""", unsafe_allow_html=True)
 
 st.write("")
-
-tab1, tab2, tab3 = st.tabs(["Who's in the room?", "Habits & Trends", "Raw data"])
+tab1, tab2, tab3 = st.tabs(["  Who's in the room?  ", "  Habits & Trends  ", "  Raw data  "])
 
 # ---- TAB 1 ----------------------------------------------------------------
 with tab1:
     c1, c2, c3 = st.columns(3)
 
     with c1:
+        title("Role distribution")
         rc = df["ROLE"].value_counts().reset_index()
         rc.columns = ["Role", "Count"]
         chart = (
-            alt.Chart(rc, title="Role distribution")
-            .mark_arc(innerRadius=65, outerRadius=120)
+            alt.Chart(rc)
+            .mark_arc(innerRadius=70, outerRadius=115)
             .encode(
                 theta=alt.Theta("Count:Q"),
-                color=alt.Color("Role:N", scale=alt.Scale(scheme="tableau10"),
-                                legend=alt.Legend(orient="bottom")),
+                color=alt.Color("Role:N",
+                    scale=alt.Scale(scheme="tableau10"),
+                    legend=alt.Legend(orient="right", title=None)),
                 tooltip=["Role:N", "Count:Q"],
             )
+            .properties(height=H, background="#0d1e30")
         )
         st.altair_chart(dark(chart), use_container_width=True)
 
     with c2:
+        title("Favorite cloud platform")
         cloud = df["FAV_CLOUD"].value_counts().reset_index()
         cloud.columns = ["Cloud", "Count"]
-        chart = (
-            alt.Chart(cloud, title="Favorite cloud platform")
-            .mark_bar()
+        base = (
+            alt.Chart(cloud)
             .encode(
-                x=alt.X("Count:Q", axis=alt.Axis(title="")),
+                x=alt.X("Count:Q", axis=alt.Axis(title="", tickMinStep=1)),
                 y=alt.Y("Cloud:N", sort="-x", axis=alt.Axis(title="")),
-                color=alt.Color("Count:Q",
-                                scale=alt.Scale(range=["#11567f", BLUE]),
-                                legend=None),
                 tooltip=["Cloud:N", "Count:Q"],
-                text=alt.Text("Count:Q"),
             )
         )
-        st.altair_chart(dark(chart + chart.mark_text(align="left", dx=4, color="white")),
-                        use_container_width=True)
+        bars  = base.mark_bar(color=BLUE, opacity=0.85)
+        texts = base.mark_text(align="left", dx=5, color="#cde8f5", fontSize=13).encode(
+            text=alt.Text("Count:Q")
+        )
+        st.altair_chart(
+            dark((bars + texts).properties(height=H, background="#0d1e30")),
+            use_container_width=True,
+        )
 
     with c3:
+        title("Favorite language")
         lang = df["FAV_LANGUAGE"].value_counts().reset_index()
         lang.columns = ["Language", "Count"]
-        chart = (
-            alt.Chart(lang, title="Favorite language")
-            .mark_bar()
+        base = (
+            alt.Chart(lang)
             .encode(
-                x=alt.X("Count:Q", axis=alt.Axis(title="")),
+                x=alt.X("Count:Q", axis=alt.Axis(title="", tickMinStep=1)),
                 y=alt.Y("Language:N", sort="-x", axis=alt.Axis(title="")),
-                color=alt.Color("Count:Q",
-                                scale=alt.Scale(range=["#11567f", BLUE]),
-                                legend=None),
                 tooltip=["Language:N", "Count:Q"],
             )
         )
-        text = chart.mark_text(align="left", dx=4, color="white").encode(
+        bars  = base.mark_bar(color=MID_BLUE, opacity=0.9)
+        texts = base.mark_text(align="left", dx=5, color="#cde8f5", fontSize=13).encode(
             text=alt.Text("Count:Q")
         )
-        st.altair_chart(dark(chart + text), use_container_width=True)
+        st.altair_chart(
+            dark((bars + texts).properties(height=H, background="#0d1e30")),
+            use_container_width=True,
+        )
 
-    # Timeline
     ts = pd.to_datetime(df["SUBMITTED_AT"])
     if ts.nunique() > 2:
         st.write("")
+        title("Responses over time")
         tl = (ts.dt.floor("min")
                 .value_counts().sort_index().cumsum()
                 .reset_index())
         tl.columns = ["Time", "Cumulative"]
         chart = (
-            alt.Chart(tl, title="Responses over time")
-            .mark_area(color=BLUE, opacity=0.5,
-                       line={"color": BLUE, "width": 2})
+            alt.Chart(tl)
+            .mark_area(color=BLUE, opacity=0.45, line={"color": BLUE, "width": 2.5})
             .encode(
                 x=alt.X("Time:T", axis=alt.Axis(title="")),
                 y=alt.Y("Cumulative:Q", axis=alt.Axis(title="Responses")),
                 tooltip=["Time:T", "Cumulative:Q"],
             )
+            .properties(height=160, background="#0d1e30")
         )
         st.altair_chart(dark(chart), use_container_width=True)
 
@@ -183,83 +212,102 @@ with tab2:
     c1, c2 = st.columns(2)
 
     with c1:
+        title("Experience distribution")
         chart = (
-            alt.Chart(df, title="Experience distribution")
-            .mark_bar(color=BLUE, opacity=0.85)
+            alt.Chart(df)
+            .mark_bar(color=BLUE, opacity=0.85, cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
             .encode(
                 x=alt.X("EXPERIENCE_YEARS:Q", bin=alt.Bin(maxbins=20),
                          axis=alt.Axis(title="Years")),
                 y=alt.Y("count():Q", axis=alt.Axis(title="People")),
                 tooltip=["count():Q"],
             )
+            .properties(height=H, background="#0d1e30")
         )
         st.altair_chart(dark(chart), use_container_width=True)
 
     with c2:
+        title("Coffee / day by role")
         chart = (
-            alt.Chart(df, title="Coffee / day by role")
-            .mark_boxplot(extent="min-max", size=40)
+            alt.Chart(df)
+            .mark_boxplot(extent="min-max", size=35)
             .encode(
-                x=alt.X("ROLE:N", axis=alt.Axis(title="", labelAngle=-20)),
-                y=alt.Y("COFFEES_PER_DAY:Q", axis=alt.Axis(title="Coffees")),
-                color=alt.Color("ROLE:N", scale=alt.Scale(scheme="tableau10"),
-                                legend=None),
+                x=alt.X("ROLE:N", axis=alt.Axis(title="", labelAngle=-15)),
+                y=alt.Y("COFFEES_PER_DAY:Q", axis=alt.Axis(title="Coffees / day")),
+                color=alt.Color("ROLE:N", scale=alt.Scale(scheme="tableau10"), legend=None),
                 tooltip=["ROLE:N", "COFFEES_PER_DAY:Q"],
             )
+            .properties(height=H, background="#0d1e30")
         )
         st.altair_chart(dark(chart), use_container_width=True)
 
+    st.write("")
     c3, c4 = st.columns(2)
 
     with c3:
-        st.write("")
+        title("AI adoption at work")
         st.markdown(f"""
-        <div class="kpi-card" style="padding: 40px 16px;">
-            <p class="kpi-value" style="font-size:4rem">{ai_pct}%</p>
-            <p class="kpi-label">use AI daily at work</p>
+        <div class="kpi-card" style="height:90px; padding:20px 16px; margin-bottom:16px;">
+            <p class="kpi-value" style="font-size:3.2rem">{ai_pct}%</p>
+            <p class="kpi-label">use AI daily</p>
         </div>""", unsafe_allow_html=True)
-        st.write("")
-        ai_comp = (df.groupby("USES_AI_DAILY")["EXPERIENCE_YEARS"]
-                     .mean().round(1).reset_index())
+
+        ai_comp = (
+            df.groupby("USES_AI_DAILY")["EXPERIENCE_YEARS"]
+              .mean().round(1).reset_index()
+        )
         ai_comp["Group"] = ai_comp["USES_AI_DAILY"].map(
             {True: "Daily AI user", False: "Not daily"}
         )
-        chart = (
-            alt.Chart(ai_comp, title="Avg experience: AI users vs others")
-            .mark_bar()
+        base = (
+            alt.Chart(ai_comp)
             .encode(
                 x=alt.X("Group:N", axis=alt.Axis(title="")),
-                y=alt.Y("EXPERIENCE_YEARS:Q", axis=alt.Axis(title="Avg years")),
+                y=alt.Y("EXPERIENCE_YEARS:Q", axis=alt.Axis(title="Avg experience (yrs)")),
                 color=alt.Color("Group:N",
-                                scale=alt.Scale(
-                                    domain=["Daily AI user", "Not daily"],
-                                    range=[BLUE, "#11567f"]
-                                ),
-                                legend=None),
+                    scale=alt.Scale(domain=["Daily AI user", "Not daily"],
+                                    range=[BLUE, MID_BLUE]),
+                    legend=None),
                 tooltip=["Group:N", "EXPERIENCE_YEARS:Q"],
             )
         )
-        st.altair_chart(dark(chart), use_container_width=True)
+        bars  = base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        texts = base.mark_text(dy=-10, color="#cde8f5", fontSize=14, fontWeight="bold").encode(
+            text=alt.Text("EXPERIENCE_YEARS:Q", format=".1f")
+        )
+        st.altair_chart(
+            dark((bars + texts).properties(height=180, background="#0d1e30",
+                                           title=alt.TitleParams(
+                                               "Avg experience: AI users vs others",
+                                               color="#8aacbf", fontSize=12))),
+            use_container_width=True,
+        )
 
     with c4:
-        avg_r = (df.groupby("ROLE")[["EXPERIENCE_YEARS", "COFFEES_PER_DAY"]]
-                   .mean().round(1).reset_index())
+        title("Experience vs coffee by role")
+        avg_r = (
+            df.groupby("ROLE")[["EXPERIENCE_YEARS", "COFFEES_PER_DAY"]]
+              .mean().round(1).reset_index()
+        )
         base = (
-            alt.Chart(avg_r, title="Experience vs coffee (avg by role)")
+            alt.Chart(avg_r)
             .encode(
                 x=alt.X("EXPERIENCE_YEARS:Q", axis=alt.Axis(title="Avg experience (yrs)")),
                 y=alt.Y("COFFEES_PER_DAY:Q", axis=alt.Axis(title="Avg coffees / day")),
-                color=alt.Color("ROLE:N", scale=alt.Scale(scheme="tableau10"),
-                                legend=None),
+                color=alt.Color("ROLE:N", scale=alt.Scale(scheme="tableau10"), legend=None),
                 tooltip=["ROLE:N", "EXPERIENCE_YEARS:Q", "COFFEES_PER_DAY:Q"],
             )
         )
-        points = base.mark_point(size=250, filled=True, opacity=0.9)
-        labels = base.mark_text(align="left", dx=10, fontSize=12,
-                                color="#cde8f5").encode(text="ROLE:N")
-        st.altair_chart(dark(points + labels), use_container_width=True)
+        points = base.mark_point(size=260, filled=True, opacity=0.9)
+        labels = base.mark_text(align="left", dx=11, fontSize=12, color="#cde8f5").encode(
+            text="ROLE:N"
+        )
+        st.altair_chart(
+            dark((points + labels).properties(height=H, background="#0d1e30")),
+            use_container_width=True,
+        )
 
 # ---- TAB 3 ----------------------------------------------------------------
 with tab3:
-    st.caption(f"{n} responses - auto-refreshes every 30 s")
+    st.caption(f"{n} responses  |  auto-refreshes every 30 s")
     st.dataframe(df, use_container_width=True, hide_index=True)
