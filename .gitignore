@@ -1,0 +1,9 @@
+# Sekrety - nigdy nie commituj!
+.streamlit/secrets.toml
+survey-app/.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
