@@ -4,9 +4,9 @@ import snowflake.connector
 # Wymagane dla nazwanych parametrow %(name)s
 snowflake.connector.paramstyle = "pyformat"
 
-st.set_page_config(page_title="Ankieta Demo", page_icon=":snowflake:")
-st.title("Ankieta publicznosci")
-st.caption("Wypelnij ankiete i sprawdz, co mowia Twoje dane na zywo!")
+st.set_page_config(page_title="Audience Survey", page_icon=":snowflake:")
+st.title("Audience Survey")
+st.caption("Fill in the survey and see your data queried live!")
 
 
 def _connect():
@@ -21,7 +21,7 @@ def fetch_count() -> int | None:
         cur.execute("SELECT COUNT(*) FROM DEMO.PUBLIC.AUDIENCE_SURVEY")
         return cur.fetchone()[0]
     except Exception as exc:
-        st.warning(f"Nie mozna pobrac licznika: {exc}")
+        st.warning(f"Could not fetch response count: {exc}")
         return None
     finally:
         if conn:
@@ -33,39 +33,39 @@ col_metric, col_btn = st.columns([5, 2])
 with col_metric:
     count = fetch_count()
     if count is not None:
-        st.metric(label="Odpowiedzi juz w bazie", value=count)
+        st.metric(label="Responses so far", value=count)
 with col_btn:
     st.write("")
     st.write("")
-    st.button("Odswiez licznik")  # klikniecie rerenderuje app i odpytuje COUNT ponownie
+    st.button("Refresh")  # klikniecie rerenderuje app i odpytuje COUNT ponownie
 
 st.divider()
 
 # Formularz ankiety
 with st.form("survey"):
-    st.subheader("Twoja odpowiedz")
+    st.subheader("Your response")
 
     role = st.selectbox(
-        "Twoja rola",
-        ["Data Engineer", "Data Scientist", "Analyst", "Dev", "Manager", "Inne"],
+        "Your role",
+        ["Data Engineer", "Data Scientist", "Analyst", "Dev", "Manager", "Other"],
     )
     experience_years = st.slider(
-        "Lata doswiadczenia w IT", min_value=0, max_value=30, value=3
+        "Years of experience in IT", min_value=0, max_value=30, value=3
     )
     fav_cloud = st.selectbox(
-        "Ulubiona platforma chmurowa",
-        ["Azure", "AWS", "GCP", "Snowflake", "Zadna"],
+        "Favorite cloud platform",
+        ["Azure", "AWS", "GCP", "Snowflake", "None"],
     )
     fav_language = st.selectbox(
-        "Ulubiony jezyk programowania",
-        ["Python", "SQL", "Scala", "Java", "JavaScript", "Rust", "Inne"],
+        "Favorite programming language",
+        ["Python", "SQL", "Scala", "Java", "JavaScript", "Rust", "Other"],
     )
     coffees_per_day = st.slider(
-        "Ile kaw dziennie wypiasz?", min_value=0, max_value=10, value=2
+        "Coffees per day?", min_value=0, max_value=10, value=2
     )
-    uses_ai_daily = st.checkbox("Uzywam AI codziennie w pracy")
+    uses_ai_daily = st.checkbox("I use AI daily at work")
 
-    submitted = st.form_submit_button("Wyslij odpowiedz", type="primary")
+    submitted = st.form_submit_button("Submit", type="primary")
 
 if submitted:
     conn = None
@@ -90,10 +90,10 @@ if submitted:
             },
         )
         conn.commit()
-        st.success("Dzieki! Twoja odpowiedz zostala zapisana.")
+        st.success("Thank you! Your response has been saved.")
         st.balloons()
     except Exception as exc:
-        st.error(f"Blad zapisu do bazy danych: {exc}")
+        st.error(f"Error saving response: {exc}")
     finally:
         if conn:
             conn.close()
